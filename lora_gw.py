@@ -2,9 +2,69 @@ import wiringpi
 import struct
 SPIchannel = 1
 SPIspeed = 500000
+
+
+
+RH_RF95_REG_00_FIFO                        =        0x00
+RH_RF95_REG_01_OP_MODE                     =        0x01
+RH_RF95_REG_02_RESERVED                    =        0x02
+RH_RF95_REG_03_RESERVED                    =        0x03
+RH_RF95_REG_04_RESERVED                    =        0x04
+RH_RF95_REG_05_RESERVED                    =        0x05
+RH_RF95_REG_06_FRF_MSB                     =        0x06
+RH_RF95_REG_07_FRF_MID                     =        0x07
+RH_RF95_REG_08_FRF_LSB                     =        0x08
+RH_RF95_REG_09_PA_CONFIG                   =        0x09
+RH_RF95_REG_0A_PA_RAMP                     =        0x0a
+RH_RF95_REG_0B_OCP                         =        0x0b
+RH_RF95_REG_0C_LNA                         =        0x0c
+RH_RF95_REG_0D_FIFO_ADDR_PTR               =        0x0d
+RH_RF95_REG_0E_FIFO_TX_BASE_ADDR           =        0x0e
+RH_RF95_REG_0F_FIFO_RX_BASE_ADDR           =        0x0f
+RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR        =        0x10
+RH_RF95_REG_11_IRQ_FLAGS_MASK              =        0x11
+RH_RF95_REG_12_IRQ_FLAGS                   =        0x12
+RH_RF95_REG_13_RX_NB_BYTES                 =        0x13
+RH_RF95_REG_14_RX_HEADER_CNT_VALUE_MSB     =        0x14
+RH_RF95_REG_15_RX_HEADER_CNT_VALUE_LSB     =        0x15
+RH_RF95_REG_16_RX_PACKET_CNT_VALUE_MSB     =        0x16
+RH_RF95_REG_17_RX_PACKET_CNT_VALUE_LSB     =        0x17
+RH_RF95_REG_18_MODEM_STAT                  =        0x18
+RH_RF95_REG_19_PKT_SNR_VALUE               =        0x19
+RH_RF95_REG_1A_PKT_RSSI_VALUE              =        0x1a
+RH_RF95_REG_1B_RSSI_VALUE                  =        0x1b
+RH_RF95_REG_1C_HOP_CHANNEL                 =        0x1c
+RH_RF95_REG_1D_MODEM_CONFIG1               =        0x1d
+RH_RF95_REG_1E_MODEM_CONFIG2               =        0x1e
+RH_RF95_REG_1F_SYMB_TIMEOUT_LSB            =        0x1f
+RH_RF95_REG_20_PREAMBLE_MSB                =        0x20
+RH_RF95_REG_21_PREAMBLE_LSB                =        0x21
+RH_RF95_REG_22_PAYLOAD_LENGTH              =        0x22
+RH_RF95_REG_23_MAX_PAYLOAD_LENGTH          =        0x23
+RH_RF95_REG_24_HOP_PERIOD                  =        0x24
+RH_RF95_REG_25_FIFO_RX_BYTE_ADDR           =        0x25
+RH_RF95_REG_26_MODEM_CONFIG3               =        0x26
+                                           
+RH_RF95_REG_40_DIO_MAPPING1                =        0x40
+RH_RF95_REG_41_DIO_MAPPING2                =        0x41
+RH_RF95_REG_42_VERSION                     =        0x42
+                                                                                      
+RH_RF95_REG_4B_TCXO                        =        0x4b
+RH_RF95_REG_4D_PA_DAC                      =        0x4d
+RH_RF95_REG_5B_FORMER_TEMP                 =        0x5b
+RH_RF95_REG_61_AGC_REF                     =        0x61
+RH_RF95_REG_62_AGC_THRESH1                 =        0x62
+RH_RF95_REG_63_AGC_THRESH2                 =        0x63
+RH_RF95_REG_64_AGC_THRESH3                 =        0x64
+
+
+
+
 wiringpi.wiringPiSetupGpio()
 
 wiringpi.wiringPiSPISetup(SPIchannel, SPIspeed)
+
+
 
 # sendData = ("\x01\x00\x00")
 # val = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
@@ -52,16 +112,79 @@ def readFieldInRegister(address, startBit, numOfBits):
     res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
     return getBitsInByte(res[1][1], startBit, numOfBits)
 
+print(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8)))
 
 #put into standyby
-print(writeFieldInRegister(0x01, 0, 3, 0))
+print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 3, 0))
 
 # lora mode
-print(writeFieldInRegister(0x01, 7, 1, 1))
+print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 7, 1, 1))
 
 # read reg back
-readFieldInRegister(0x01, 0, 8)
+print(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8)))
+
+# set up fifo to use full length
+writeFieldInRegister(RH_RF95_REG_0E_FIFO_TX_BASE_ADDR, 0, 8, 0)
+writeFieldInRegister(RH_RF95_REG_0F_FIFO_RX_BASE_ADDR, 0, 8, 0)
 
 
+print(bin(readFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8)))
+print(bin(readFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8)))
+print(bin(readFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8)))
+
+writeFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8, 0x72)
+writeFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8, 0x74)
+writeFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8, 0x00)
+print("wrote")
+print(bin(readFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8)))
+print(bin(readFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8)))
+print(bin(readFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8)))
+
+
+# read freq 
+print(hex(readFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8)))
+print(hex(readFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8)))
+print(hex(readFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8)))
+
+
+
+# set preamble to 8
+#writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
+#writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
+print(hex(readFieldInRegister(RH_RF95_REG_20_PREAMBLE_MSB , 0, 8)))
+print(hex(readFieldInRegister(RH_RF95_REG_21_PREAMBLE_LSB , 0, 8)))
+
+# Set Frequency to 915
+val = 915000000*32000000/524288
+print("new freq")
+writeFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8, ((val) & 0xff))
+writeFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8, ((val >> 8) & 0xff))
+writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
+print(hex(readFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8)))
+print(hex(readFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8)))
+print(hex(readFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8)))
+
+
+print(hex(readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 0, 8)))
+
+
+#clear rx bit
+writeFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS, 0, 8, 0xff)
+# leaving sleep mode
+print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 5, 3, 0))
+
+print("waiting for message")
+
+while (readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 6, 1) != 0):
+        print("waiting")
+
+
+print(hex(readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 0, 8)))
+
+# Get length of packet
+print("length")
+print(hex(readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)))
+
+# reset fifo ptr
 
 
