@@ -106,85 +106,86 @@ def writeFieldInRegister(address, startBit, numOfBits, value):
     a = struct.pack(">H", sendData)
     wiringpi.wiringPiSPIDataRW(SPIchannel, a)
 
+
+def writeRegister(address, value):
+    address = address | 0x80
+    shiftedAddress = address << 8
+    sendData = shiftedAddress
+    sendData = sendData | value
+    a = struct.pack(">H", sendData)
+    wiringpi.wiringPiSPIDataRW(SPIchannel, a)
+
 def readFieldInRegister(address, startBit, numOfBits):
     sendAddress = (address & 0x7f)
     sendData = struct.pack("<h", sendAddress)
     res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
     return getBitsInByte(res[1][1], startBit, numOfBits)
 
-print(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8)))
+def readBytes(address, numOfBytes):
+    sendAddress = (address & 0x7f)
+    sendData = struct.pack("<h", sendAddress)
+    sendData = sendData + ("\x00" * numOfBytes)
+    res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
+    return res
 
-#put into standyby
-print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 3, 0))
-
-# lora mode
-print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 7, 1, 1))
+import time
+# put into sleep and lora mode
+writeRegister(RH_RF95_REG_01_OP_MODE, 0x80)
 
 # read reg back
-print(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8)))
+print("mode: " + str(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8))))
 
 # set up fifo to use full length
-writeFieldInRegister(RH_RF95_REG_0E_FIFO_TX_BASE_ADDR, 0, 8, 0)
-writeFieldInRegister(RH_RF95_REG_0F_FIFO_RX_BASE_ADDR, 0, 8, 0)
+writeRegister(RH_RF95_REG_0E_FIFO_TX_BASE_ADDR, 0x00)
+writeRegister(RH_RF95_REG_0F_FIFO_RX_BASE_ADDR, 0x00)
 
+# Put into standy
+writeRegister(RH_RF95_REG_01_OP_MODE, 0x01)
 
-print(bin(readFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8)))
-print(bin(readFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8)))
-print(bin(readFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8)))
-
-writeFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8, 0x72)
-writeFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8, 0x74)
-writeFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8, 0x00)
-print("wrote")
-print(bin(readFieldInRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0, 8)))
-print(bin(readFieldInRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0, 8)))
-print(bin(readFieldInRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0, 8)))
-
-
-# read freq 
-print(hex(readFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8)))
-print(hex(readFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8)))
-print(hex(readFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8)))
-
-
+# Config radio
+writeRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0x72)
+writeRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0x74)
+writeRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0x00)
 
 # set preamble to 8
-#writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
-#writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
-print(hex(readFieldInRegister(RH_RF95_REG_20_PREAMBLE_MSB , 0, 8)))
-print(hex(readFieldInRegister(RH_RF95_REG_21_PREAMBLE_LSB , 0, 8)))
+writeRegister(RH_RF95_REG_20_PREAMBLE_MSB, 0x00)
+writeRegister(RH_RF95_REG_21_PREAMBLE_LSB, 0x08)
 
 # Set Frequency to 915
-val = 915000000*32000000/524288
-print("new freq")
-writeFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8, ((val) & 0xff))
-writeFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8, ((val >> 8) & 0xff))
-writeFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8, ((val >> 16 ) & 0xff))
-print(hex(readFieldInRegister(RH_RF95_REG_08_FRF_LSB , 0, 8)))
-print(hex(readFieldInRegister(RH_RF95_REG_07_FRF_MID , 0, 8)))
-print(hex(readFieldInRegister(RH_RF95_REG_06_FRF_MSB , 0, 8)))
+val = 915000000*524288/32000000
+writeRegister(RH_RF95_REG_08_FRF_LSB , (val) & 0xff)
+writeRegister(RH_RF95_REG_07_FRF_MID , ((val >> 8) & 0xff))
+writeRegister(RH_RF95_REG_06_FRF_MSB , ((val >> 16) & 0xff ))
 
+# set tx power
+writeRegister(RH_RF95_REG_4D_PA_DAC,0x07)
+writeRegister(RH_RF95_REG_09_PA_CONFIG,0x8f)
 
-print(hex(readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 0, 8)))
-
+# set continusous rx
+writeRegister(RH_RF95_REG_01_OP_MODE, 0x05)
+writeRegister(RH_RF95_REG_40_DIO_MAPPING1, 0x00)
 
 #clear rx bit
 writeFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS, 0, 8, 0xff)
-# leaving sleep mode
-print(writeFieldInRegister(RH_RF95_REG_01_OP_MODE, 5, 3, 0))
 
 print("waiting for message")
 
-while (readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 6, 1) != 0):
-        print("waiting")
+while (True):
+    while (readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 6, 1) == 0):
+        #print("waiting")
+        pass
 
+    # Get length of packet
+    length = readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
 
-print(hex(readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 0, 8)))
+    print("Received " + str(length) + " bytes")
 
-# Get length of packet
-print("length")
-print(hex(readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)))
+    # reset fifo ptr to start of rx packet
+    rxStart = readFieldInRegister(RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
+    writeFieldInRegister(RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
 
-# reset fifo ptr
+    # read latest rx packet
+    print(readBytes(RH_RF95_REG_00_FIFO, length))
 
-
+    # reset flag
+    writeRegister(RH_RF95_REG_12_IRQ_FLAGS, 0xff)
