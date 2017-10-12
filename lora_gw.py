@@ -1,5 +1,7 @@
 import wiringpi
 import struct
+import re
+
 SPIchannel = 1
 SPIspeed = 500000
 
@@ -77,7 +79,7 @@ wiringpi.wiringPiSPISetup(SPIchannel, SPIspeed)
 # Given a start bit of 2  and a length of 3, these bits will be extracted
 def getBitsInByte(byte, startBit, numOfBits=1):
     # mask off lefty bits
-    masked = ord(byte) & (0xff >> 8 - (startBit+numOfBits))
+    masked = byte & (0xff >> 8 - (startBit+numOfBits))
     final = masked >> startBit 
     return final
 
@@ -115,77 +117,178 @@ def writeRegister(address, value):
     a = struct.pack(">H", sendData)
     wiringpi.wiringPiSPIDataRW(SPIchannel, a)
 
-def readFieldInRegister(address, startBit, numOfBits):
+
+def readRegister(address):
     sendAddress = (address & 0x7f)
     sendData = struct.pack("<h", sendAddress)
-    res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
-    return getBitsInByte(res[1][1], startBit, numOfBits)
+    res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)[1][1]
+    return ord(res)
+
+
+def readFieldInRegister(address, startBit, numOfBits):
+    res = readRegister(address)
+    return getBitsInByte(res, startBit, numOfBits)
 
 def readBytes(address, numOfBytes):
     sendAddress = (address & 0x7f)
-    sendData = struct.pack("<h", sendAddress)
+    sendData = struct.pack("B", sendAddress)
     sendData = sendData + ("\x00" * numOfBytes)
     res = wiringpi.wiringPiSPIDataRW(SPIchannel, sendData)
     return res
 
-import time
-# put into sleep and lora mode
-writeRegister(RH_RF95_REG_01_OP_MODE, 0x80)
 
-# read reg back
-print("mode: " + str(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8))))
 
-# set up fifo to use full length
-writeRegister(RH_RF95_REG_0E_FIFO_TX_BASE_ADDR, 0x00)
-writeRegister(RH_RF95_REG_0F_FIFO_RX_BASE_ADDR, 0x00)
+# PACKET STRUCTURE
+######################################
+#  to  # from # id  # flags # payload#
+######################################
+# to/from/id/flags are all 1 byte
+# payload is remaining packet
+# to: 0xff is broadcast, all other values are availble addresses
+# from: address of sending radio
+# id: id to identify the packet, used for application level logic
+# flags: TBD
+FLAG_ACK_REQ = 0x01 # This is used to tell the receiver you want an ack.  The receiver will also set this bit in response
+                    # but it will use the same message ID and have an empty payload
 
-# Put into standy
-writeRegister(RH_RF95_REG_01_OP_MODE, 0x01)
+FLAG_EXTRA_VERIFICATION = 0x02 #  this flag makes us do a little more checking before we try and process the packet.  This tells
+                                # us that we are more than likely a proper Exopacket
 
-# Config radio
-writeRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0x72)
-writeRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0x74)
-writeRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0x00)
 
-# set preamble to 8
-writeRegister(RH_RF95_REG_20_PREAMBLE_MSB, 0x00)
-writeRegister(RH_RF95_REG_21_PREAMBLE_LSB, 0x08)
+class Packet(object):
+    def __init__(self, packet):
+        if len(packet) < 5:
+            # not a valid packet
+            return None
+        self.toAddress = struct.unpack("B", packet[0])[0]
+        self.fromAddress = struct.unpack("B", packet[1])[0]
+        self.id = struct.unpack("B", packet[2])[0]
+        self.flags = struct.unpack("B", packet[3])[0]
+        self.payload = packet[5:]
+        self.valid = None
+        if self.flags & FLAG_EXTRA_VERIFICATION:
+            check = (self.toAddress + self.fromAddress + self.id + self.flags + 0xc1) & 0xff
+            verification = struct.unpack("B", self.payload[0])[0]
+            if check == verification:
+                self.valid = True
+            else:
+                self.valid = False
+        
+    def __str__(self):
+        out = "To: {} From: {} ID: {} Payload: {}".format(self.toAddress,self.fromAddress,self.id, self.payload)
+        return out
 
-# Set Frequency to 915
-val = 915000000*524288/32000000
-writeRegister(RH_RF95_REG_08_FRF_LSB , (val) & 0xff)
-writeRegister(RH_RF95_REG_07_FRF_MID , ((val >> 8) & 0xff))
-writeRegister(RH_RF95_REG_06_FRF_MSB , ((val >> 16) & 0xff ))
 
-# set tx power
-writeRegister(RH_RF95_REG_4D_PA_DAC,0x07)
-writeRegister(RH_RF95_REG_09_PA_CONFIG,0x8f)
 
-# set continusous rx
-writeRegister(RH_RF95_REG_01_OP_MODE, 0x05)
-writeRegister(RH_RF95_REG_40_DIO_MAPPING1, 0x00)
 
-#clear rx bit
-writeFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS, 0, 8, 0xff)
+def initRadio():
+    # put into sleep and lora mode
+    writeRegister(RH_RF95_REG_01_OP_MODE, 0x80)
 
-print("waiting for message")
+    # read reg back
+    print("mode: " + str(bin(readFieldInRegister(RH_RF95_REG_01_OP_MODE, 0, 8))))
 
-while (True):
-    while (readFieldInRegister(RH_RF95_REG_12_IRQ_FLAGS , 6, 1) == 0):
-        #print("waiting")
-        pass
+    # set up fifo to use full length
+    writeRegister(RH_RF95_REG_0E_FIFO_TX_BASE_ADDR, 0x00)
+    writeRegister(RH_RF95_REG_0F_FIFO_RX_BASE_ADDR, 0x00)
 
-    # Get length of packet
-    length = readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
+    # Put into standy
+    writeRegister(RH_RF95_REG_01_OP_MODE, 0x01)
 
-    print("Received " + str(length) + " bytes")
+    # Config radio
+    writeRegister(RH_RF95_REG_1D_MODEM_CONFIG1, 0x72)
+    writeRegister(RH_RF95_REG_1E_MODEM_CONFIG2, 0x74)
+    writeRegister(RH_RF95_REG_26_MODEM_CONFIG3, 0x00)
 
-    # reset fifo ptr to start of rx packet
-    rxStart = readFieldInRegister(RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
-    writeFieldInRegister(RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
+    # set preamble to 8
+    writeRegister(RH_RF95_REG_20_PREAMBLE_MSB, 0x00)
+    writeRegister(RH_RF95_REG_21_PREAMBLE_LSB, 0x08)
 
-    # read latest rx packet
-    print(readBytes(RH_RF95_REG_00_FIFO, length))
+    # Set Frequency to 915
+    val = 915000000*524288/32000000
+    writeRegister(RH_RF95_REG_08_FRF_LSB , (val) & 0xff)
+    writeRegister(RH_RF95_REG_07_FRF_MID , ((val >> 8) & 0xff))
+    writeRegister(RH_RF95_REG_06_FRF_MSB , ((val >> 16) & 0xff ))
 
-    # reset flag
+    # set tx power
+    writeRegister(RH_RF95_REG_4D_PA_DAC,0x07)
+    writeRegister(RH_RF95_REG_09_PA_CONFIG,0x8f)
+
+    # set continusous rx
+    writeRegister(RH_RF95_REG_01_OP_MODE, 0x05)
+    writeRegister(RH_RF95_REG_40_DIO_MAPPING1, 0x00)
+
+    #clear rx flags
     writeRegister(RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+
+pendingPackets = {}
+
+def processPacket(packet):
+    global pendingPackets
+    if packet.flags & FLAG_ACK_REQ:
+        if packet.id in pendingPackets:
+            # send ack to node
+            pendingPackets.pop(packet.id)
+            return
+    #if packet.type == REPORT:
+    #   pass
+
+    # extract temperature
+    regex = re.match(r"temperature:\s(?P<temperature>\d+)\spacket:\s\d+",  packet.payload)
+    if regex == None:
+        return
+    #print("Temperature: {}".format(regex.group('temperature')))
+
+
+
+def main():
+    initRadio()
+    print("waiting for message")
+
+
+    pendingPackets = {}
+
+    
+
+    while (True):
+        flags = readRegister(RH_RF95_REG_12_IRQ_FLAGS)
+        while (not (flags & 0x40)):
+            #print("waiting")
+            flags = readRegister(RH_RF95_REG_12_IRQ_FLAGS)
+
+        #received packet
+        from datetime import datetime
+        print(datetime.now())
+
+        # Check CRC
+        isCrcValid = True if flags & 0x20 == 0 else False
+        print("Flags: {}".format(hex(flags)))
+        #:print("CRC valid: {}" .format(isCrcValid))
+        
+        if isCrcValid == False:
+            print("Invalid CRC")
+            writeRegister(RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+            continue
+        # Get length of packet
+        length = readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
+        print(length)
+
+        # reset fifo ptr to start of rx packet
+        rxStart = readFieldInRegister(RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
+        writeFieldInRegister(RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
+
+        # read latest rx packet
+        packet = readBytes(RH_RF95_REG_00_FIFO, length)[1][1:]
+        hex_chars = map(hex, map(ord,packet))
+
+        print(hex_chars)
+        p = Packet(packet)
+        processPacket(p)
+        
+        print(p)
+        # reset flag
+        writeRegister(RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+
+
+if __name__ == "__main__":
+    main()
