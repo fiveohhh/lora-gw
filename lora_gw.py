@@ -1,6 +1,7 @@
 import wiringpi
 import struct
 import re
+import msgpack
 
 SPIchannel = 1
 SPIspeed = 500000
@@ -173,9 +174,12 @@ class Packet(object):
                 self.valid = True
             else:
                 self.valid = False
+            #self.payload = self.payload[1:]
+        self.message = msgpack.unpackb(self.payload)
+
         
     def __str__(self):
-        out = "To: {} From: {} ID: {} Payload: {}".format(self.toAddress,self.fromAddress,self.id, self.payload)
+        out = "To: {} From: {} ID: {} msgPayload: {}".format(self.toAddress, self.fromAddress, self.id, self.message)
         return out
 
 
@@ -279,13 +283,19 @@ def main():
 
         # read latest rx packet
         packet = readBytes(RH_RF95_REG_00_FIFO, length)[1][1:]
-        hex_chars = map(hex, map(ord,packet))
+        #hex_chars = map(hex, map(ord,packet))
 
-        print(hex_chars)
-        p = Packet(packet)
-        processPacket(p)
+        #print(hex_chars)
+        try:
+            p = Packet(packet)
+            processPacket(p)
         
-        print(p)
+            print(p)
+        except Exception as e:
+            print("Invalid message pack?")
+            print(e)
+        
+        
         # reset flag
         writeRegister(RH_RF95_REG_12_IRQ_FLAGS, 0xff)
 
