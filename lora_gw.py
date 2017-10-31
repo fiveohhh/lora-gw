@@ -2,7 +2,9 @@ import wiringpi
 import struct
 import re
 import msgpack
-
+import requests
+import urllib
+import json
 SPIchannel = 1
 SPIspeed = 500000
 
@@ -67,6 +69,18 @@ wiringpi.wiringPiSetupGpio()
 
 wiringpi.wiringPiSPISetup(SPIchannel, SPIspeed)
 
+
+def getCik(deviceId):
+    if deviceId == 2:
+        return "U1pZDd9UJkHvMCbtjyl6M7Q6v4JlG2PwvLBOCtHu"
+    elif deviceId == 3:
+        return "9JgS3KmyLDnLH29PCyvAxeeXQcJdWMahnt1EHecq"
+    elif deviceId == 4:
+        return "XAS90QwaXhPw8M0sGuBgfjS6qWkgI7jrtu1J8dgT"
+    elif deviceId == 5:
+        return "w9cYPeFCCFsWheO7wohItEkj5zWYU940WwJsTlyV"
+    else:
+        return None
 
 
 # sendData = ("\x01\x00\x00")
@@ -174,7 +188,6 @@ class Packet(object):
                 self.valid = True
             else:
                 self.valid = False
-            #self.payload = self.payload[1:]
         self.message = msgpack.unpackb(self.payload)
 
         
@@ -237,22 +250,22 @@ def processPacket(packet):
     #if packet.type == REPORT:
     #   pass
 
-    # extract temperature
-    regex = re.match(r"temperature:\s(?P<temperature>\d+)\spacket:\s\d+",  packet.payload)
-    if regex == None:
-        return
-    #print("Temperature: {}".format(regex.group('temperature')))
-
+    #git cik.
+    headers = {
+            'X-Exosite-cik': getCik(packet.fromAddress),
+            'Content-type':'application/x-www-form-urlencoded'
+            }
+    payload = {'raw_data':json.dumps(packet.message['values'])}
+    print(payload)
+    requests.post('https://h21xyg6w90w3k0000.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
 
 
 def main():
     initRadio()
     print("waiting for message")
 
-
     pendingPackets = {}
 
-    
 
     while (True):
         flags = readRegister(RH_RF95_REG_12_IRQ_FLAGS)
