@@ -5,6 +5,8 @@ import msgpack
 import requests
 import urllib
 import json
+from aes_gcm import AES_GCM
+
 SPIchannel = 1
 SPIspeed = 500000
 
@@ -81,6 +83,13 @@ def getCik(deviceId):
         return "w9cYPeFCCFsWheO7wohItEkj5zWYU940WwJsTlyV"
     else:
         return None
+
+
+gcms = {}
+
+def getGCM(deviceId):
+    if deviceId == 6:
+        return gcms[deviceId]
 
 
 # sendData = ("\x01\x00\x00")
@@ -241,12 +250,16 @@ def initRadio():
 pendingPackets = {}
 
 def processPacket(packet):
+    global gcms
     global pendingPackets
     if packet.flags & FLAG_ACK_REQ:
         if packet.id in pendingPackets:
             # send ack to node
             pendingPackets.pop(packet.id)
             return
+
+
+
     #if packet.type == REPORT:
     #   pass
 
@@ -259,9 +272,34 @@ def processPacket(packet):
     print(payload)
     requests.post('https://h21xyg6w90w3k0000.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
 
+def verifyPacket(raw_packet):
+    # get authenticated data
+    ad = raw_packet[0:4]
+
+    # get IF
+    iv = raw_packet[4:16]
+
+    # get ciphertext
+    ct = raw_packet[16:-16]
+
+    # get tag
+    tag = raw_packet[-16:]
+
+
+    if str(ord(raw_packet[1])) in gcms:
+        # have key
+        a = gcms[str(ord(raw_packet[1]))].decrypt(int(iv.encode('hex'),16), ct, int(tag.encode('hex'),16), ad)
+        print("valid")
+        print(a)
+
+    else:
+        print("No key for: " + str(ord(raw_packet[1])))
+        return False
 
 def main():
+    global gcms
     initRadio()
+    gcms['6'] = AES_GCM(0xfeffe9928665731c6d6a8f9467308308)
     print("waiting for message")
 
     pendingPackets = {}
@@ -279,7 +317,7 @@ def main():
 
         # Check CRC
         isCrcValid = True if flags & 0x20 == 0 else False
-        print("Flags: {}".format(hex(flags)))
+        #print("Flags: {}".format(hex(flags)))
         #:print("CRC valid: {}" .format(isCrcValid))
         
         if isCrcValid == False:
@@ -288,7 +326,6 @@ def main():
             continue
         # Get length of packet
         length = readFieldInRegister(RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
-        print(length)
 
         # reset fifo ptr to start of rx packet
         rxStart = readFieldInRegister(RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
@@ -299,14 +336,16 @@ def main():
         #hex_chars = map(hex, map(ord,packet))
 
         #print(hex_chars)
+        verifyPacket(packet)
         try:
-            p = Packet(packet)
-            processPacket(p)
-        
-            print(p)
+            #p = Packet(packet)
+            #processPacket(p)
+            pass
+            #print(p)
         except Exception as e:
-            print("Invalid message pack?")
-            print(e)
+            pass
+            #print("Invalid message pack?")
+            #print(e)
         
         
         # reset flag
