@@ -73,14 +73,9 @@ wiringpi.wiringPiSPISetup(SPIchannel, SPIspeed)
 
 
 def getCik(deviceId):
-    if deviceId == 2:
-        return "U1pZDd9UJkHvMCbtjyl6M7Q6v4JlG2PwvLBOCtHu"
-    elif deviceId == 3:
-        return "9JgS3KmyLDnLH29PCyvAxeeXQcJdWMahnt1EHecq"
-    elif deviceId == 4:
-        return "XAS90QwaXhPw8M0sGuBgfjS6qWkgI7jrtu1J8dgT"
-    elif deviceId == 5:
-        return "w9cYPeFCCFsWheO7wohItEkj5zWYU940WwJsTlyV"
+    if deviceId == 7:
+        return "hh7acpkq64F8d7hxDQYWYoth2hNJ5Pv3b077Bg8i"
+
     else:
         return None
 
@@ -175,28 +170,17 @@ def readBytes(address, numOfBytes):
 FLAG_ACK_REQ = 0x01 # This is used to tell the receiver you want an ack.  The receiver will also set this bit in response
                     # but it will use the same message ID and have an empty payload
 
-FLAG_EXTRA_VERIFICATION = 0x02 #  this flag makes us do a little more checking before we try and process the packet.  This tells
-                                # us that we are more than likely a proper Exopacket
-
-
 class Packet(object):
-    def __init__(self, packet):
+    def __init__(self, packet, payload):
         if len(packet) < 5:
             # not a valid packet
             return None
+        
         self.toAddress = struct.unpack("B", packet[0])[0]
         self.fromAddress = struct.unpack("B", packet[1])[0]
         self.id = struct.unpack("B", packet[2])[0]
         self.flags = struct.unpack("B", packet[3])[0]
-        self.payload = packet[5:]
-        self.valid = None
-        if self.flags & FLAG_EXTRA_VERIFICATION:
-            check = (self.toAddress + self.fromAddress + self.id + self.flags + 0xc1) & 0xff
-            verification = struct.unpack("B", self.payload[0])[0]
-            if check == verification:
-                self.valid = True
-            else:
-                self.valid = False
+        self.payload = payload
         self.message = msgpack.unpackb(self.payload)
 
         
@@ -250,7 +234,6 @@ def initRadio():
 pendingPackets = {}
 
 def processPacket(packet):
-    global gcms
     global pendingPackets
     if packet.flags & FLAG_ACK_REQ:
         if packet.id in pendingPackets:
@@ -258,19 +241,13 @@ def processPacket(packet):
             pendingPackets.pop(packet.id)
             return
 
-
-
-    #if packet.type == REPORT:
-    #   pass
-
-    #git cik.
     headers = {
             'X-Exosite-cik': getCik(packet.fromAddress),
             'Content-type':'application/x-www-form-urlencoded'
             }
     payload = {'raw_data':json.dumps(packet.message['values'])}
-    print(payload)
-    requests.post('https://h21xyg6w90w3k0000.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
+    o = requests.post('https://p1sva9qt09ds00000.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
+    print(o)
 
 def verifyPacket(raw_packet):
     # get authenticated data
@@ -290,11 +267,11 @@ def verifyPacket(raw_packet):
         # have key
         a = gcms[str(ord(raw_packet[1]))].decrypt(int(iv.encode('hex'),16), ct, int(tag.encode('hex'),16), ad)
         print("valid")
-        print(a)
+        return(a)
 
     else:
         print("No key for: " + str(ord(raw_packet[1])))
-        return False
+        return None
 
 def main():
     global gcms
@@ -336,16 +313,14 @@ def main():
         #hex_chars = map(hex, map(ord,packet))
 
         #print(hex_chars)
-        verifyPacket(packet)
-        try:
-            #p = Packet(packet)
-            #processPacket(p)
-            pass
-            #print(p)
-        except Exception as e:
-            pass
-            #print("Invalid message pack?")
-            #print(e)
+        payload = verifyPacket(packet)
+        if payload != None:
+          try:
+              p = Packet(packet, payload)
+              processPacket(p)
+          except Exception as e:
+              print("Invalid message pack?")
+              print(e)
         
         
         # reset flag
