@@ -7,7 +7,7 @@ import json
 import sys
 import rf95_registers
 from aes_gcm import AES_GCM
-import keys
+import devices
 from rfm95_lora import Radio
 
 def getCik(deviceId):
@@ -65,13 +65,12 @@ def processPacket(packet):
             # send ack to node
             pendingPackets.pop(packet.id)
             return
-
     headers = {
             'X-Exosite-cik': getCik(packet.fromAddress),
             'Content-type':'application/x-www-form-urlencoded'
             }
     payload = {'raw_data':json.dumps(packet.message['values'])}
-    o = requests.post('https://p1sva9qt09ds00000.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
+    o = requests.post('https://' + str(devices.devices[str(packet.fromAddress)]['pid'])  + '.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
     print(o)
 
 def verifyPacket(raw_packet):
@@ -100,8 +99,8 @@ def verifyPacket(raw_packet):
 
 def initKeys():
     global gcms
-    for device, key in keys.devices.iteritems():
-        gcms[device] = AES_GCM(key)
+    for id, device in devices.devices.iteritems():
+        gcms[id] = AES_GCM(device['key'])
 
 def main():
     global gcms
