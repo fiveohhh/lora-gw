@@ -57,15 +57,7 @@ class Packet(object):
         return out
 
 
-pendingPackets = {}
-
 def processPacket(packet):
-    global pendingPackets
-    if packet.flags & FLAG_ACK_REQ:
-        if packet.id in pendingPackets:
-            # send ack to node
-            pendingPackets.pop(packet.id)
-            return
     headers = {
             'X-Exosite-cik': getCik(packet.fromAddress),
             'Content-type':'application/x-www-form-urlencoded'
@@ -73,11 +65,12 @@ def processPacket(packet):
     if 't' in packet.message:
         if packet.message['t'] == 'D':
             if 'v' in packet.message:
+                print("received valid message: {}".format(str(packet)))
                 payload = {'raw_data':json.dumps(packet.message['v'])}
                 o = requests.post('https://' + str(devices.devices[str(packet.fromAddress)]['pid'])  + '.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
                 print(o)
             else:
-                print("No values found in data packet: " + str packet.message)
+                print("No values found in data packet: " + str(packet.message))
         else:
             print("Received packet of unknown type: " + str(packet.message['t']))
             return None
@@ -102,6 +95,7 @@ def verifyPacket(raw_packet):
     if str(ord(raw_packet[1])) in gcms:
         # have key
         try:
+            # decrypti/authenticate packet
             a = gcms[str(ord(raw_packet[1]))].decrypt(int(iv.encode('hex'),16), ct, int(tag.encode('hex'),16), ad)
         except InvalidTagException:
             print("Tag doesn't authenticate against assigned key")
@@ -154,15 +148,18 @@ def main():
         packet = r.radio.readBytes(rf95_registers.RH_RF95_REG_00_FIFO, length)[1][1:]
         #hex_chars = map(hex, map(ord,packet))
 
+        rssi = -137 + r.radio.readRegister(rf95_registers.RH_RF95_REG_1A_PKT_RSSI_VALUE)
+        snr = (r.radio.readRegister(rf95_registers.RH_RF95_REG_19_PKT_SNR_VALUE)-(1<<8))/4
         #print(hex_chars)
         payload = verifyPacket(packet)
         if payload != None:
-          try:
-              p = Packet(packet, payload)
-              processPacket(p)
-          except Exception as e:
-              print("Invalid message pack?")
-              print(e)
+            print("RSSI: {} SNR: {}".format(rssi, snr))
+            try:
+                p = Packet(packet, payload)
+                processPacket(p)
+            except Exception as e:
+                print("Invalid message pack?")
+                print(e)
         
         
         # reset flag
