@@ -5,7 +5,6 @@ import requests
 import urllib
 import json
 import sys
-import rf95_registers
 from aes_gcm import AES_GCM
 from aes_gcm import InvalidTagException
 import devices
@@ -119,10 +118,10 @@ def main():
 
     print("waiting for message")
     while (True):
-        flags = r.radio.readRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS)
+        flags = r.getIrqFlags()
         while (not (flags & 0x40)):
             #print("waiting")
-            flags = r.radio.readRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS)
+            flags = r.getIrqFlags()#radio.readRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS)
         #flags = r.waitForPacket()
         #received packet
         from datetime import datetime
@@ -135,21 +134,21 @@ def main():
         
         if isCrcValid == False:
             print("Invalid CRC")
-            r.radio.writeRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+            r.clearIrqFlags()# r.radio.writeRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS, 0xff)
             continue
         # Get length of packet
-        length = r.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
+        #length = r.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
 
         # reset fifo ptr to start of rx packet
-        rxStart = r.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
-        r.radio.writeFieldInRegister(rf95_registers.RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
+        #rxStart = r.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
+        #r.radio.writeFieldInRegister(rf95_registers.RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
 
         # read latest rx packet
-        packet = r.radio.readBytes(rf95_registers.RH_RF95_REG_00_FIFO, length)[1][1:]
+        packet = r.getPacket()# r.radio.readBytes(rf95_registers.RH_RF95_REG_00_FIFO, length)[1][1:]
         #hex_chars = map(hex, map(ord,packet))
 
-        rssi = -137 + r.radio.readRegister(rf95_registers.RH_RF95_REG_1A_PKT_RSSI_VALUE)
-        snr = (r.radio.readRegister(rf95_registers.RH_RF95_REG_19_PKT_SNR_VALUE)-(1<<8))/4
+        rssi = r.getLastRssi() #-137 + r.radio.readRegister(rf95_registers.RH_RF95_REG_1A_PKT_RSSI_VALUE)
+        snr = r.getLastSnr()   # (r.radio.readRegister(rf95_registers.RH_RF95_REG_19_PKT_SNR_VALUE)-(1<<8))/4
         #print(hex_chars)
         payload = verifyPacket(packet)
         if payload != None:
@@ -163,7 +162,7 @@ def main():
         
         
         # reset flag
-        r.radio.writeRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+        r.clearIrqFlags()
         sys.stdout.flush()
 
 

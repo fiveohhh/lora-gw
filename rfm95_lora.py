@@ -46,15 +46,35 @@ class Radio():
         #clear rx flags
         self.radio.writeRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS, 0xff)
 
-    #def isPacketAvailable(self):
-    #    flags = self.radio.readRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS)
-    #    print(flags)
-    #    if (flags & 40):
-    #        print(flags)
-    #        return flags
-    #    else:
-    #        return None
+    def getLastRssi(self):
+        rssi = -137 + self.radio.readRegister(rf95_registers.RH_RF95_REG_1A_PKT_RSSI_VALUE)
+        return rssi
 
+    def getLastSnr(self):
+        snr = (self.radio.readRegister(rf95_registers.RH_RF95_REG_19_PKT_SNR_VALUE)-(1<<8))/4
+        return snr
+
+    def getPacket(self):
+        # Get length of packet
+        length = self.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_13_RX_NB_BYTES, 0, 8)
+
+        # reset fifo ptr to start of rx packet
+        rxStart = self.radio.readFieldInRegister(rf95_registers.RH_RF95_REG_10_FIFO_RX_CURRENT_ADDR, 0, 8)
+        self.radio.writeFieldInRegister(rf95_registers.RH_RF95_REG_0D_FIFO_ADDR_PTR, 0, 8, rxStart)
+
+        # read latest rx packet
+        packet = self.radio.readBytes(rf95_registers.RH_RF95_REG_00_FIFO, length)[1][1:]
+        #hex_chars = map(hex, map(ord,packet))
+        return packet
+
+
+    def getIrqFlags(self):
+        flags = self.radio.readRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS)
+        return flags
+
+    def clearIrqFlags(self):
+        self.radio.writeRegister(rf95_registers.RH_RF95_REG_12_IRQ_FLAGS, 0xff)
+        return
 
     #def waitForPacket(self):
     #    a = self.isPacketAvailable()
