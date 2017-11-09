@@ -7,6 +7,7 @@ import json
 import sys
 import rf95_registers
 from aes_gcm import AES_GCM
+from aes_gcm import InvalidTagException
 import devices
 from rfm95_lora import Radio
 
@@ -69,9 +70,20 @@ def processPacket(packet):
             'X-Exosite-cik': getCik(packet.fromAddress),
             'Content-type':'application/x-www-form-urlencoded'
             }
-    payload = {'raw_data':json.dumps(packet.message['values'])}
-    o = requests.post('https://' + str(devices.devices[str(packet.fromAddress)]['pid'])  + '.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
-    print(o)
+    if 't' in packet.message:
+        if packet.message['t'] == 'D':
+            if 'v' in packet.message:
+                payload = {'raw_data':json.dumps(packet.message['v'])}
+                o = requests.post('https://' + str(devices.devices[str(packet.fromAddress)]['pid'])  + '.m2.exosite.io/onep:v1/stack/alias', headers=headers, data=urllib.urlencode(payload))
+                print(o)
+            else:
+                print("No values found in data packet: " + str packet.message)
+        else:
+            print("Received packet of unknown type: " + str(packet.message['t']))
+            return None
+    else:
+        print("Received unknown packet format")
+        return None
 
 def verifyPacket(raw_packet):
     # get authenticated data
@@ -89,8 +101,11 @@ def verifyPacket(raw_packet):
 
     if str(ord(raw_packet[1])) in gcms:
         # have key
-        a = gcms[str(ord(raw_packet[1]))].decrypt(int(iv.encode('hex'),16), ct, int(tag.encode('hex'),16), ad)
-        print("valid")
+        try:
+            a = gcms[str(ord(raw_packet[1]))].decrypt(int(iv.encode('hex'),16), ct, int(tag.encode('hex'),16), ad)
+        except InvalidTagException:
+            print("Tag doesn't authenticate against assigned key")
+            return
         return(a)
 
     else:
